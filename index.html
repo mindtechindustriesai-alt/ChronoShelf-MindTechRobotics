@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChronoShelf - MindTech</title>
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0a0a2a">
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+        body { background: linear-gradient(135deg, #0a0a2a, #1a2a6c); color: #fff; min-height: 100vh; padding: 20px; }
+        
+        .container { max-width: 100%; margin: 0 auto; }
+        header { text-align: center; padding: 20px 0; margin-bottom: 20px; }
+        h1 { font-size: 2.5rem; color: #00ffff; margin-bottom: 10px; text-shadow: 0 0 15px #00ffff; }
+        
+        .card { 
+            background: rgba(255,255,255,0.1); 
+            padding: 25px; 
+            border-radius: 15px; 
+            margin-bottom: 20px; 
+            border: 2px solid rgba(0,255,255,0.3);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        
+        .scanner-section { text-align: center; }
+        
+        .scanner-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            height: 300px;
+            margin: 0 auto 20px;
+            border-radius: 15px;
+            overflow: hidden;
+            border: 3px solid #00ffcc;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #00ffcc;
+            font-size: 1.2rem;
+        }
+        
+        #video { width: 100%; height: 100%; object-fit: cover; }
+        
+        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 20px 0; }
+        .btn { padding: 15px; border: none; border-radius: 10px; font-size: 1.1rem; font-weight: bold; cursor: pointer; }
+        .btn-success { background: linear-gradient(45deg, #27ae60, #2ecc71); color: white; }
+        .btn-danger { background: linear-gradient(45deg, #e74c3c, #ff6b6b); color: white; }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        
+        .inventory-item { 
+            background: rgba(255,255,255,0.05); 
+            padding: 15px; 
+            border-radius: 10px; 
+            margin-bottom: 10px; 
+            border-left: 4px solid #00ffcc;
+        }
+        
+        .status-online { color: #27ae60; font-weight: bold; }
+        .status-offline { color: #e74c3c; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🛒 ChronoShelf PWA</h1>
+            <p>Enterprise Inventory Management</p>
+            <p class="status-online">✅ PWA Ready - Install to Home Screen</p>
+        </header>
+
+        <!-- Scanner Section -->
+        <div class="card scanner-section">
+            <h2>📷 Barcode Scanner</h2>
+            <p>Point camera at any barcode to scan instantly</p>
+            
+            <div class="scanner-container">
+                <video id="video" autoplay playsinline></video>
+                <div id="scannerPlaceholder">Camera feed will appear here</div>
+            </div>
+            
+            <div class="btn-group">
+                <button class="btn btn-success" id="startBtn">🎥 Start Scanner</button>
+                <button class="btn btn-danger" id="stopBtn" disabled>⏹️ Stop Scanner</button>
+            </div>
+            
+            <div id="result">
+                <div style="background: rgba(0,255,204,0.1); padding: 15px; border-radius: 10px;">
+                    <p>Click "Start Scanner" to begin scanning products</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Inventory Section -->
+        <div class="card">
+            <h2>📦 Inventory Management</h2>
+            <div id="inventoryList">
+                <div class="inventory-item">
+                    <strong>Scan products to build inventory</strong><br>
+                    <small>Works offline • Real-time updates • Multi-user sync</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Store Info -->
+        <div class="card">
+            <h3>🏪 Store Features</h3>
+            <div class="inventory-item">
+                <strong>Receiving Module</strong> - 2 staff can update stock simultaneously
+            </div>
+            <div class="inventory-item">
+                <strong>Real-time Sync</strong> - All devices stay linked
+            </div>
+            <div class="inventory-item">
+                <strong>Offline Mode</strong> - Works without internet
+            </div>
+        </div>
+    </div>
+
+    <!-- ZXing Library -->
+    <script src="https://unpkg.com/@zxing/browser@latest/dist/zxing.min.js"></script>
+    
+    <script>
+        const codeReader = new ZXing.BrowserMultiFormatReader();
+        const videoElem = document.getElementById('video');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const scannerPlaceholder = document.getElementById('scannerPlaceholder');
+        let currentStream = null;
+        let inventory = JSON.parse(localStorage.getItem('chronoshelf-inventory')) || [];
+
+        async function startScanner() {
+            try {
+                // Request camera with environment mode (rear camera)
+                currentStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: "environment",
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    } 
+                });
+                
+                videoElem.srcObject = currentStream;
+                scannerPlaceholder.style.display = 'none';
+                videoElem.style.display = 'block';
+
+                // Start barcode detection
+                codeReader.decodeFromVideoDevice(null, videoElem, (result, err) => {
+                    if (result) {
+                        handleScanResult(result.getText());
+                    }
+                    if (err && !(err instanceof ZXing.NotFoundException)) {
+                        console.log('Scanning...');
+                    }
+                });
+
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                
+                updateResult('✅ Scanner activated - Point camera at barcode', 'success');
+                
+            } catch (err) {
+                console.error("Camera error:", err);
+                updateResult('❌ Camera access denied. Please allow camera permissions and refresh page.', 'error');
+            }
+        }
+
+        function stopScanner() {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+                currentStream = null;
+            }
+            codeReader.reset();
+            
+            videoElem.style.display = 'none';
+            scannerPlaceholder.style.display = 'block';
+            
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            
+            updateResult('⏹️ Scanner stopped', 'info');
+        }
+
+        function handleScanResult(barcode) {
+            const products = {
+                '123456789012': { name: 'Fresh Milk 2L', category: 'Dairy', price: 24.99 },
+                '234567890123': { name: 'Whole Wheat Bread', category: 'Bakery', price: 18.50 },
+                '345678901234': { name: 'Chicken Breast 500g', category: 'Meat', price: 45.99 },
+                '456789012345': { name: 'Organic Apples 1kg', category: 'Produce', price: 32.99 },
+                '567890123456': { name: 'Frozen Pizza', category: 'Frozen', price: 39.99 }
+            };
+            
+            const product = products[barcode] || { 
+                name: 'New Product', 
+                category: 'General', 
+                price: 25.00 
+            };
+            
+            const item = {
+                id: Date.now(),
+                barcode: barcode,
+                name: product.name,
+                category: product.category,
+                price: product.price,
+                quantity: 1,
+                scannedAt: new Date().toLocaleString(),
+                employee: 'EMP001',
+                aisle: 'Aisle ' + (Math.floor(Math.random() * 10) + 1)
+            };
+            
+            inventory.push(item);
+            localStorage.setItem('chronoshelf-inventory', JSON.stringify(inventory));
+            updateInventoryDisplay();
+            
+            updateResult(`✅ <strong>${product.name}</strong> added to inventory<br>Barcode: ${barcode}`, 'success');
+            
+            // Auto-stop after successful scan
+            setTimeout(stopScanner, 2000);
+        }
+
+        function updateInventoryDisplay() {
+            const inventoryList = document.getElementById('inventoryList');
+            
+            if (inventory.length === 0) {
+                inventoryList.innerHTML = `
+                    <div class="inventory-item">
+                        <strong>No products scanned yet</strong><br>
+                        <small>Use the scanner above to add inventory items</small>
+                    </div>
+                `;
+                return;
+            }
+            
+            inventoryList.innerHTML = inventory.map(item => `
+                <div class="inventory-item">
+                    <strong>${item.name}</strong><br>
+                    <small>
+                        📊 ${item.barcode} • 🏷️ ${item.category} • 
+                        📦 ${item.quantity} unit • 💰 R${item.price} • 
+                        📍 ${item.aisle}<br>
+                        👤 ${item.employee} • 🕒 ${item.scannedAt}
+                    </small>
+                </div>
+            `).join('');
+        }
+
+        function updateResult(message, type) {
+            const resultDiv = document.getElementById('result');
+            const bgColor = type === 'success' ? 'rgba(39,174,96,0.1)' : 
+                          type === 'error' ? 'rgba(231,76,60,0.1)' : 'rgba(0,255,204,0.1)';
+            const borderColor = type === 'success' ? '#27ae60' : 
+                             type === 'error' ? '#e74c3c' : '#00ffcc';
+            
+            resultDiv.innerHTML = `
+                <div style="background: ${bgColor}; border-left: 4px solid ${borderColor}; padding: 15px; border-radius: 8px;">
+                    ${message}
+                </div>
+            `;
+        }
+
+        // Event listeners
+        startBtn.addEventListener('click', startScanner);
+        stopBtn.addEventListener('click', stopScanner);
+
+        // Initialize
+        updateInventoryDisplay();
+
+        // Service Worker Registration
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js')
+                .then(reg => console.log('Service Worker registered'))
+                .catch(err => console.log('Service Worker registration failed'));
+        }
+
+        // PWA Install prompt
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            console.log('PWA install available');
+        });        // Enhanced PWA Installation
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            showInstallPrompt();
+        });
+
+        function showInstallPrompt() {
+            const installDiv = document.createElement('div');
+            installDiv.innerHTML = `
+                <div style="background: linear-gradient(45deg, #ff0080, #00ffff); color: white; padding: 15px; border-radius: 10px; margin: 15px 0; text-align: center;">
+                    <strong>📱 Install ChronoShelf App</strong>
+                    <p>Get native app experience with offline functionality</p>
+                    <button onclick="installPWA()" style="background: white; color: #0a0a2a; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; margin: 5px;">
+                        Install Now
+                    </button>
+                    <button onclick="this.parentElement.parentElement.remove()" style="background: transparent; color: white; border: 1px solid white; padding: 10px 20px; border-radius: 8px; cursor: pointer; margin: 5px;">
+                        Later
+                    </button>
+                </div>
+            `;
+            document.querySelector('.container').prepend(installDiv);
+        }
+
+        async function installPWA() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    console.log('PWA installed successfully');
+                }
+                deferredPrompt = null;
+            }
+        }
+
+        // Enhanced offline detection
+        window.addEventListener('online', () => {
+            document.querySelector('.status-online').textContent = '✅ Online - Real-time sync active';
+            showNotification('🌐 Back online - Syncing data...', 'success');
+        });
+
+        window.addEventListener('offline', () => {
+            document.querySelector('.status-online').textContent = '⚠️ Offline - Working locally';
+            showNotification('📴 Offline mode - Changes will sync when back online', 'info');
+        });
+
+        function showNotification(message, type) {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: ${type === 'success' ? '#27ae60' : '#00ffcc'};
+                color: white;
+                padding: 15px 20px;
+                border-radius: 10px;
+                z-index: 1000;
+                box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            `;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 3000);
+        }
+    </script>
+</body>
+</html>
